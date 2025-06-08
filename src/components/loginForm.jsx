@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { useRouter } from 'next/router';
 
 const LoginForm = ({ onLogin }) => {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -22,20 +24,38 @@ const LoginForm = ({ onLogin }) => {
     setError('');
 
     try {
-      console.log('Attempting login to: http://localhost:5001/api/auth/login');
+      // Server is running on port 5002
       console.log('Form data:', formData);
       
-      const response = await axios.post('http://localhost:5001/api/auth/login', formData, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        timeout: 10000
-      });
+    const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/auth/login`, formData, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000
+    });
+
       
       console.log('Login response:', response.data);
       
       if (response.data && response.data.token) {
-        onLogin(response.data);
+        // Store user data and token in localStorage
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data));
+        
+        // Call onLogin if provided (optional)
+        if (typeof onLogin === 'function') {
+          onLogin(response.data);
+        }
+        
+        // Redirect based on user role
+        if (response.data.role === 'admin') {
+          router.push('/adminDashboard');
+        } else if (response.data.role === 'supervisor') {
+          router.push('/supervisorDashboard');
+        } else {
+          // Default fallback
+          router.push('/dashboard');
+        }
       } else {
         setError('Invalid response from server');
       }
@@ -43,9 +63,15 @@ const LoginForm = ({ onLogin }) => {
       console.error('Login error details:', err);
       
       if (err.code === 'ECONNREFUSED' || err.code === 'ERR_NETWORK') {
-        setError('Cannot connect to server. Backend may not be running on port 5000.');
+        setError('Cannot connect to server. Make sure backend is running on port 5002.');
       } else if (err.response) {
-        setError(err.response.data?.message || `Server error: ${err.response.status}`);
+        // Better error handling - show the actual error message from server
+        const errorMessage = err.response.data?.message || err.response.data?.error || `Server error: ${err.response.status}`;
+        setError(errorMessage);
+        
+        // Log full error details for debugging
+        console.error('Server response:', err.response.data);
+        console.error('Status:', err.response.status);
       } else {
         setError('Network error. Check if backend is running.');
       }
